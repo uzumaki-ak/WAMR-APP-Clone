@@ -1,11 +1,13 @@
 package com.wamr.recovery
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -25,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnEnableNotifications: Button
     private lateinit var btnRequestPermissions: Button
     private lateinit var btnStartService: Button
+    private lateinit var btnStatusDownloader: Button
     private lateinit var btnClearData: Button
 
     private val database by lazy { AppDatabase.getDatabase(this) }
@@ -33,11 +36,30 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        if (!PermissionUtils.hasStoragePermission(this)) {
+            showFolderSelectionDialog()
+        }
+
         initViews()
         setupRecyclerView()
         checkPermissions()
         loadAppsWithMessages()
         setupButtons()
+    }
+
+    private fun showFolderSelectionDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Storage Permission Required")
+            .setMessage("WAMR needs permission to save media files to a separate folder so they won't be deleted when you delete from WhatsApp.\n\nPlease grant storage permission.")
+            .setPositiveButton("Grant Permission") { _, _ ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    PermissionUtils.requestAllFilesAccess(this)
+                } else {
+                    PermissionUtils.requestStoragePermission(this)
+                }
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private fun initViews() {
@@ -46,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         btnEnableNotifications = findViewById(R.id.btnEnableNotifications)
         btnRequestPermissions = findViewById(R.id.btnRequestPermissions)
         btnStartService = findViewById(R.id.btnStartService)
+        btnStatusDownloader = findViewById(R.id.btnStatusDownloader)
         btnClearData = findViewById(R.id.btnClearData)
     }
 
@@ -61,7 +84,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkPermissions() {
         val notificationEnabled = NotificationListener.isEnabled(this)
-        val storageGranted = PermissionUtils.hasStoragePermission(this)
+        val storageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            PermissionUtils.hasAllFilesAccess()
+        } else {
+            PermissionUtils.hasStoragePermission(this)
+        }
 
         updateStatusText(notificationEnabled, storageGranted)
     }
@@ -81,18 +108,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnRequestPermissions.setOnClickListener {
-            PermissionUtils.requestStoragePermission(this)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                PermissionUtils.requestAllFilesAccess(this)
+            } else {
+                PermissionUtils.requestStoragePermission(this)
+            }
         }
 
         btnStartService.setOnClickListener {
             startForegroundService()
         }
 
+        btnStatusDownloader.setOnClickListener {
+            startActivity(Intent(this, StatusActivity::class.java))
+        }
+
         btnClearData.setOnClickListener {
             clearAllData()
-        }
-        findViewById<Button>(R.id.btnStatusDownloader).setOnClickListener {
-            startActivity(Intent(this, StatusActivity::class.java))
         }
     }
 
@@ -128,10 +160,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun clearAllData() {
-        lifecycleScope.launch {
-            database.messageDao().deleteAll()
-            Toast.makeText(this@MainActivity, "All data cleared", Toast.LENGTH_SHORT).show()
-        }
+        AlertDialog.Builder(this)
+            .setTitle("Clear All Data")
+            .setMessage("Are you sure you want to delete all captured messages and media?")
+            .setPositiveButton("Yes") { _, _ ->
+                lifecycleScope.launch {
+                    database.messageDao().deleteAll()
+                    Toast.makeText(this@MainActivity, "All data cleared", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("No", null)
+            .show()
     }
 
     override fun onResume() {

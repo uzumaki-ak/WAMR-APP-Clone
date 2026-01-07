@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
@@ -27,6 +28,8 @@ object PermissionUtils {
                         context,
                         Manifest.permission.READ_MEDIA_VIDEO
                     ) == PackageManager.PERMISSION_GRANTED
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
         } else {
             ContextCompat.checkSelfPermission(
                 context,
@@ -36,24 +39,52 @@ object PermissionUtils {
     }
 
     fun requestStoragePermission(activity: Activity) {
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO
-            )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            requestAllFilesAccess(activity)
         } else {
-            arrayOf(
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VIDEO,
+                    Manifest.permission.READ_MEDIA_AUDIO
+                )
+            } else {
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            }
+
+            ActivityCompat.requestPermissions(
+                activity,
+                permissions,
+                STORAGE_PERMISSION_CODE
             )
         }
+    }
 
-        ActivityCompat.requestPermissions(
-            activity,
-            permissions,
-            STORAGE_PERMISSION_CODE
-        )
+    fun requestAllFilesAccess(activity: Activity) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:${activity.packageName}")
+                    }
+                    activity.startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    activity.startActivity(intent)
+                }
+            }
+        }
+    }
+
+    fun hasAllFilesAccess(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            true
+        }
     }
 
     fun hasNotificationPermission(context: Context): Boolean {
@@ -88,10 +119,14 @@ object PermissionUtils {
 
     fun requestDisableBatteryOptimization(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = Uri.parse("package:${context.packageName}")
+            try {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            context.startActivity(intent)
         }
     }
 

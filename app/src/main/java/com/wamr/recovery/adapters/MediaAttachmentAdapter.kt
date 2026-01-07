@@ -43,36 +43,69 @@ class MediaAttachmentAdapter : ListAdapter<MessageEntity, MediaAttachmentAdapter
             message.mediaPath?.let { path ->
                 val file = File(path)
                 if (file.exists()) {
-                    Glide.with(itemView.context)
-                        .load(file)
-                        .centerCrop()
-                        .into(thumbnail)
-                }
+                    when (message.mediaType) {
+                        "video" -> {
+                            Glide.with(itemView.context)
+                                .load(file)
+                                .centerCrop()
+                                .placeholder(android.R.drawable.ic_media_play)
+                                .into(thumbnail)
+                        }
+                        "image" -> {
+                            Glide.with(itemView.context)
+                                .load(file)
+                                .centerCrop()
+                                .into(thumbnail)
+                        }
+                        "audio" -> {
+                            thumbnail.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
+                        }
+                        "document" -> {
+                            thumbnail.setImageResource(android.R.drawable.ic_menu_my_calendar)
+                        }
+                        else -> {
+                            thumbnail.setImageResource(android.R.drawable.ic_menu_gallery)
+                        }
+                    }
 
-                btnDownload.setOnClickListener {
-                    openMedia(file)
+                    btnDownload.visibility = View.VISIBLE
+                    btnDownload.setOnClickListener {
+                        openMedia(file)
+                    }
+                } else {
+                    fileName.text = "File not found"
+                    btnDownload.visibility = View.GONE
+                    thumbnail.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
                 }
+            } ?: run {
+                fileName.text = "No media"
+                btnDownload.visibility = View.GONE
             }
         }
 
         private fun openMedia(file: File) {
-            val uri = FileProvider.getUriForFile(
-                itemView.context,
-                "${itemView.context.packageName}.fileprovider",
-                file
-            )
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, getMimeType(file))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try {
+                val uri = FileProvider.getUriForFile(
+                    itemView.context,
+                    "${itemView.context.packageName}.fileprovider",
+                    file
+                )
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, getMimeType(file))
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                itemView.context.startActivity(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            itemView.context.startActivity(intent)
         }
 
         private fun getMimeType(file: File): String {
             return when (file.extension.lowercase()) {
                 "jpg", "jpeg", "png", "gif", "webp" -> "image/*"
-                "mp4", "mkv", "avi" -> "video/*"
-                "mp3", "wav", "ogg" -> "audio/*"
+                "mp4", "mkv", "avi", "3gp" -> "video/*"
+                "mp3", "wav", "ogg", "opus" -> "audio/*"
+                "pdf" -> "application/pdf"
                 else -> "*/*"
             }
         }

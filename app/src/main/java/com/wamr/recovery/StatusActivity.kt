@@ -15,6 +15,7 @@ class StatusActivity : AppCompatActivity() {
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var statusAdapter: StatusAdapter
+    private lateinit var emptyText: TextView
     private val statusManager by lazy { StatusManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,6 +29,7 @@ class StatusActivity : AppCompatActivity() {
 
     private fun initViews() {
         recyclerView = findViewById(R.id.recyclerViewStatus)
+        emptyText = findViewById(R.id.emptyText)
 
         findViewById<TextView>(R.id.btnBack).setOnClickListener {
             finish()
@@ -38,7 +40,7 @@ class StatusActivity : AppCompatActivity() {
         statusAdapter = StatusAdapter { statusItem ->
             statusManager.downloadStatus(statusItem.filePath) { success ->
                 if (success) {
-                    Toast.makeText(this, "Status downloaded", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Status downloaded to Downloads/WAMR_Status", Toast.LENGTH_LONG).show()
                 } else {
                     Toast.makeText(this, "Download failed", Toast.LENGTH_SHORT).show()
                 }
@@ -53,7 +55,18 @@ class StatusActivity : AppCompatActivity() {
     private fun loadStatuses() {
         lifecycleScope.launch {
             val statuses = statusManager.getAllStatuses()
+            if (statuses.isEmpty()) {
+                emptyText.visibility = TextView.VISIBLE
+                emptyText.text = "No statuses found.\n\nMake sure you've viewed some WhatsApp statuses first!"
+            } else {
+                emptyText.visibility = TextView.GONE
+            }
             statusAdapter.submitList(statuses)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadStatuses()
     }
 }

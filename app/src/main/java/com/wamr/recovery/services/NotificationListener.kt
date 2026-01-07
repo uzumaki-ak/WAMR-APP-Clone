@@ -9,6 +9,7 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.wamr.recovery.database.AppDatabase
 import com.wamr.recovery.database.MessageEntity
+import com.wamr.recovery.utils.MediaCopier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,7 @@ class NotificationListener : NotificationListenerService() {
     private val TAG = "NotificationListener"
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val database by lazy { AppDatabase.getDatabase(this) }
+    private val mediaCopier by lazy { MediaCopier(this) }
 
     private val targetApps = setOf(
         "com.whatsapp",
@@ -46,42 +48,63 @@ class NotificationListener : NotificationListenerService() {
         if (isDeleted) {
             handleDeletedMessage(packageName, title, sbn.key)
         } else if (text.isNotBlank()) {
-            val mediaPath = detectMedia(bigText, packageName)
-            saveMessage(packageName, title, bigText, sbn.key, sbn.postTime, mediaPath)
+            serviceScope.launch {
+                val copiedMediaPath = findAndCopyLatestMedia(packageName, text)
+                saveMessage(packageName, title, bigText, sbn.key, sbn.postTime, copiedMediaPath)
+            }
         }
     }
 
-    private fun detectMedia(text: String, packageName: String): String? {
-        val indicators = listOf("📷", "🎥", "🎵", "📄", "Photo", "Video", "Audio", "Document")
+    private suspend fun findAndCopyLatestMedia(packageName: String, messageText: String): String? {
+        val mediaIndicators = listOf("📷", "🎥", "🎵", "📄", "Photo", "Video", "Audio", "Document", "Sticker")
 
-        if (indicators.any { text.contains(it) }) {
-            return findLatestMedia(packageName)
+        if (!mediaIndicators.any { messageText.contains(it) }) {
+            return null
         }
-        return null
-    }
 
-    private fun findLatestMedia(packageName: String): String? {
-        val basePath = "/Android/media/$packageName/WhatsApp/Media"
-        val mediaFolders = listOf("WhatsApp Images", "WhatsApp Video", "WhatsApp Audio", "WhatsApp Documents")
+        val mediaFolders = listOf(
+            "WhatsApp Images/Private",
+            "WhatsApp Images/Sent",
+            "WhatsApp Video/Private",
+            "WhatsApp Video/Sent",
+            "WhatsApp Audio/Private",
+            "WhatsApp Audio/Sent",
+            "WhatsApp Documents/Private",
+            "WhatsApp Documents/Sent",
+            "WhatsApp Stickers"
+        )
 
         var latestFile: File? = null
-        var latestTime = 0L
+        var latestTime = System.currentTimeMillis() - 30000 // Last 30 seconds (increased from 10)
 
+        val basePath = "/Android/media/$packageName/WhatsApp/Media"
         val externalStorage = Environment.getExternalStorageDirectory()
 
         mediaFolders.forEach { folder ->
-            val mediaDir = File(externalStorage, "$basePath/$folder")
-            if (mediaDir.exists()) {
+            val fullPath = "$basePath/$folder"
+            val mediaDir = File(externalStorage, fullPath)
+
+            Log.d(TAG, "Scanning: ${mediaDir.absolutePath}, exists: ${mediaDir.exists()}")
+
+            if (mediaDir.exists() && mediaDir.isDirectory) {
                 mediaDir.listFiles()?.forEach { file ->
-                    if (file.lastModified() > latestTime) {
+                    if (file.isFile && file.lastModified() > latestTime) {
                         latestTime = file.lastModified()
                         latestFile = file
+                        Log.d(TAG, "Found file: ${file.name}, modified: ${file.lastModified()}")
                     }
                 }
             }
         }
 
-        return latestFile?.absolutePath
+        return if (latestFile != null) {
+            val copiedPath = mediaCopier.copyMediaToWAMRFolder(latestFile!!)
+            Log.d(TAG, "Media copy result: original=${latestFile!!.absolutePath}, copied=$copiedPath")
+            copiedPath
+        } else {
+            Log.w(TAG, "No media file found in any folder")
+            null
+        }
     }
 
     private fun saveMessage(
@@ -94,6 +117,7 @@ class NotificationListener : NotificationListenerService() {
     ) {
         serviceScope.launch {
             try {
+                Log.d(TAG, "Saving message - sender: $sender, message: $message, mediaPath: $mediaPath")
                 val entity = MessageEntity(
                     packageName = packageName,
                     sender = sender,
@@ -105,7 +129,7 @@ class NotificationListener : NotificationListenerService() {
                     mediaType = mediaPath?.let { detectMediaType(it) }
                 )
                 database.messageDao().insert(entity)
-                Log.d(TAG, "Message saved: $sender - $message")
+                Log.d(TAG, "Message saved: $sender - $message - Media: $mediaPath")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving message", e)
             }
@@ -115,9 +139,10 @@ class NotificationListener : NotificationListenerService() {
     private fun detectMediaType(path: String): String {
         return when (File(path).extension.lowercase()) {
             "jpg", "jpeg", "png", "gif", "webp" -> "image"
-            "mp4", "mkv", "avi" -> "video"
-            "mp3", "wav", "ogg" -> "audio"
-            else -> "document"
+            "mp4", "mkv", "avi", "3gp" -> "video"
+            "mp3", "wav", "ogg", "opus" -> "audio"
+            "pdf", "doc", "docx", "xls", "xlsx" -> "document"
+            else -> "file"
         }
     }
 

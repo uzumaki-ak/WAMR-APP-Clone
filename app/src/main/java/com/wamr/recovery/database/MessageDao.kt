@@ -50,12 +50,13 @@ interface MessageDao {
     fun getMessagesBySenderAndApp(sender: String, packageName: String): Flow<List<MessageEntity>>
 
     @Query("""
-        SELECT * FROM messages 
-        WHERE sender = :sender 
-        AND packageName = :packageName 
-        AND mediaPath IS NOT NULL 
-        ORDER BY timestamp DESC
-    """)
+    SELECT * FROM messages 
+    WHERE sender = :sender 
+    AND packageName = :packageName 
+    AND mediaPath IS NOT NULL 
+    AND mediaPath != '' 
+    ORDER BY timestamp DESC
+""")
     fun getMediaMessagesBySender(sender: String, packageName: String): Flow<List<MessageEntity>>
 
     @Query("UPDATE messages SET isDeleted = 1 WHERE sender = :sender AND notificationKey = :key")
