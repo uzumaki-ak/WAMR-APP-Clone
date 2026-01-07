@@ -2,6 +2,7 @@ package com.wamr.recovery.services
 
 import android.app.Notification
 import android.content.Context
+import android.os.Environment
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -12,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 class NotificationListener : NotificationListenerService() {
 
@@ -44,10 +46,42 @@ class NotificationListener : NotificationListenerService() {
         if (isDeleted) {
             handleDeletedMessage(packageName, title, sbn.key)
         } else if (text.isNotBlank()) {
-            saveMessage(packageName, title, bigText, sbn.key, sbn.postTime)
+            val mediaPath = detectMedia(bigText, packageName)
+            saveMessage(packageName, title, bigText, sbn.key, sbn.postTime, mediaPath)
+        }
+    }
+
+    private fun detectMedia(text: String, packageName: String): String? {
+        val indicators = listOf("📷", "🎥", "🎵", "📄", "Photo", "Video", "Audio", "Document")
+
+        if (indicators.any { text.contains(it) }) {
+            return findLatestMedia(packageName)
+        }
+        return null
+    }
+
+    private fun findLatestMedia(packageName: String): String? {
+        val basePath = "/Android/media/$packageName/WhatsApp/Media"
+        val mediaFolders = listOf("WhatsApp Images", "WhatsApp Video", "WhatsApp Audio", "WhatsApp Documents")
+
+        var latestFile: File? = null
+        var latestTime = 0L
+
+        val externalStorage = Environment.getExternalStorageDirectory()
+
+        mediaFolders.forEach { folder ->
+            val mediaDir = File(externalStorage, "$basePath/$folder")
+            if (mediaDir.exists()) {
+                mediaDir.listFiles()?.forEach { file ->
+                    if (file.lastModified() > latestTime) {
+                        latestTime = file.lastModified()
+                        latestFile = file
+                    }
+                }
+            }
         }
 
-        Log.d(TAG, "Notification from $packageName: $title - $text")
+        return latestFile?.absolutePath
     }
 
     private fun saveMessage(
@@ -55,7 +89,8 @@ class NotificationListener : NotificationListenerService() {
         sender: String,
         message: String,
         notificationKey: String,
-        timestamp: Long
+        timestamp: Long,
+        mediaPath: String?
     ) {
         serviceScope.launch {
             try {
@@ -65,13 +100,24 @@ class NotificationListener : NotificationListenerService() {
                     message = message,
                     timestamp = timestamp,
                     notificationKey = notificationKey,
-                    isDeleted = false
+                    isDeleted = false,
+                    mediaPath = mediaPath,
+                    mediaType = mediaPath?.let { detectMediaType(it) }
                 )
                 database.messageDao().insert(entity)
                 Log.d(TAG, "Message saved: $sender - $message")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving message", e)
             }
+        }
+    }
+
+    private fun detectMediaType(path: String): String {
+        return when (File(path).extension.lowercase()) {
+            "jpg", "jpeg", "png", "gif", "webp" -> "image"
+            "mp4", "mkv", "avi" -> "video"
+            "mp3", "wav", "ogg" -> "audio"
+            else -> "document"
         }
     }
 
@@ -86,9 +132,7 @@ class NotificationListener : NotificationListenerService() {
         }
     }
 
-    override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        // Optional
-    }
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {}
 
     companion object {
         fun isEnabled(context: Context): Boolean {

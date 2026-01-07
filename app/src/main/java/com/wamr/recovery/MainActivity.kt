@@ -10,7 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.wamr.recovery.adapters.MessageAdapter
+import com.wamr.recovery.adapters.AppGroupAdapter
 import com.wamr.recovery.database.AppDatabase
 import com.wamr.recovery.services.ForegroundService
 import com.wamr.recovery.services.NotificationListener
@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recyclerView: RecyclerView
-    private lateinit var messageAdapter: MessageAdapter
+    private lateinit var appGroupAdapter: AppGroupAdapter
     private lateinit var statusText: TextView
     private lateinit var btnEnableNotifications: Button
     private lateinit var btnRequestPermissions: Button
@@ -36,7 +36,7 @@ class MainActivity : AppCompatActivity() {
         initViews()
         setupRecyclerView()
         checkPermissions()
-        loadMessages()
+        loadAppsWithMessages()
         setupButtons()
     }
 
@@ -50,10 +50,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        messageAdapter = MessageAdapter()
+        appGroupAdapter = AppGroupAdapter { packageName ->
+            openChatsActivity(packageName)
+        }
         recyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = messageAdapter
+            adapter = appGroupAdapter
         }
     }
 
@@ -89,6 +91,9 @@ class MainActivity : AppCompatActivity() {
         btnClearData.setOnClickListener {
             clearAllData()
         }
+        findViewById<Button>(R.id.btnStatusDownloader).setOnClickListener {
+            startActivity(Intent(this, StatusActivity::class.java))
+        }
     }
 
     private fun openNotificationSettings() {
@@ -107,12 +112,19 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Service started", Toast.LENGTH_SHORT).show()
     }
 
-    private fun loadMessages() {
+    private fun loadAppsWithMessages() {
         lifecycleScope.launch {
-            database.messageDao().getAllMessages().collect { messages ->
-                messageAdapter.submitList(messages)
+            database.messageDao().getAppsWithMessageCount().collect { apps ->
+                appGroupAdapter.submitList(apps)
             }
         }
+    }
+
+    private fun openChatsActivity(packageName: String) {
+        val intent = Intent(this, ChatsActivity::class.java).apply {
+            putExtra("PACKAGE_NAME", packageName)
+        }
+        startActivity(intent)
     }
 
     private fun clearAllData() {
@@ -125,5 +137,6 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         checkPermissions()
+        loadAppsWithMessages()
     }
 }

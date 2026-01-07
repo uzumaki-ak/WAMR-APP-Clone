@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Required Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -26,7 +25,6 @@
         android:theme="@style/Theme.WAMRRecovery"
         tools:targetApi="31">
 
-        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -36,7 +34,10 @@
             </intent-filter>
         </activity>
 
-        <!-- Notification Listener Service -->
+        <activity android:name=".ChatsActivity" android:exported="false"/>
+        <activity android:name=".MessagesActivity" android:exported="false"/>
+        <activity android:name=".StatusActivity" android:exported="false"/>
+
         <service
             android:name=".services.NotificationListener"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
@@ -46,13 +47,11 @@
             </intent-filter>
         </service>
 
-        <!-- Foreground Service -->
         <service
             android:name=".services.ForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
-        <!-- Boot Receiver -->
         <receiver
             android:name=".services.BootReceiver"
             android:enabled="true"
@@ -61,6 +60,16 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 
