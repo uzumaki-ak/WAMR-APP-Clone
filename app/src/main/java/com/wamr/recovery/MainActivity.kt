@@ -3,6 +3,7 @@ package com.wamr.recovery
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
@@ -36,9 +37,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        if (!PermissionUtils.hasStoragePermission(this)) {
-            showFolderSelectionDialog()
-        }
+        checkAndRequestAllPermissions()
 
         initViews()
         setupRecyclerView()
@@ -47,19 +46,19 @@ class MainActivity : AppCompatActivity() {
         setupButtons()
     }
 
-    private fun showFolderSelectionDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Storage Permission Required")
-            .setMessage("WAMR needs permission to save media files to a separate folder so they won't be deleted when you delete from WhatsApp.\n\nPlease grant storage permission.")
-            .setPositiveButton("Grant Permission") { _, _ ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    PermissionUtils.requestAllFilesAccess(this)
-                } else {
-                    PermissionUtils.requestStoragePermission(this)
-                }
+    private fun checkAndRequestAllPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                AlertDialog.Builder(this)
+                    .setTitle("⚠️ CRITICAL: All Files Access Required")
+                    .setMessage("WAMR needs 'All Files Access' permission to read media from WhatsApp folders.\n\nWithout this, media capture will NOT work!\n\nClick OK to grant permission.")
+                    .setPositiveButton("OK") { _, _ ->
+                        PermissionUtils.requestAllFilesAccess(this)
+                    }
+                    .setCancelable(false)
+                    .show()
             }
-            .setCancelable(false)
-            .show()
+        }
     }
 
     private fun initViews() {
@@ -116,7 +115,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnStartService.setOnClickListener {
-            startForegroundService()
+            startForegroundServiceCompat()
         }
 
         btnStatusDownloader.setOnClickListener {
@@ -133,14 +132,18 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
-    private fun startForegroundService() {
+    private fun startForegroundServiceCompat() {
         if (!NotificationListener.isEnabled(this)) {
             Toast.makeText(this, "Enable notification access first", Toast.LENGTH_SHORT).show()
             return
         }
 
         val intent = Intent(this, ForegroundService::class.java)
-        startForegroundService(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
         Toast.makeText(this, "Service started", Toast.LENGTH_SHORT).show()
     }
 
